@@ -50,6 +50,7 @@
 #include "net/rime/rime.h"
 
 #include "sys/node-id.h"
+#include "sys/csprng-flash.h"
 #include "cfs-coffee-arch.h"
 #include "cfs/cfs-coffee.h"
 #include "sys/autostart.h"
@@ -345,6 +346,8 @@ main(int argc, char **argv)
   } else {
     PRINTF("Node id is not set.\n");
   }
+  
+  csprng_flash_restore_seed();
 
   /*  PRINTF("MAC %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
 	 ds2411_id[0], ds2411_id[1], ds2411_id[2], ds2411_id[3],
