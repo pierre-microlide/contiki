@@ -106,7 +106,8 @@ delete_expired_tentatives(void)
   while(next) {
     current = next;
     next = list_item_next(current);
-    if(current->status && (current->expiration_time <= clock_seconds())) {
+    if((current->status <= NEIGHBOR_TENTATIVE_AWAITING_ACK)
+        && current->expiration_time <= clock_seconds()) {
       neighbor_delete(current);
     }
   }
