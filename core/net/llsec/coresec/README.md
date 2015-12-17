@@ -87,6 +87,14 @@ You may want to encrypt unicast, but not broadcast frames. For this, add:
 #define NEIGHBOR_CONF_BROADCAST_KEY_LEN         0
 ```
 
+### Enabling SCREWED
+
+```c
+#define APKES_CONF_WITH_SCREWED 1
+```
+Support is limited to `nullrdc`
+
 ## Resources
 
-* [Paper](http://dl.acm.org/citation.cfm?id=2523501.2523502)
+* [APKES Paper](http://dl.acm.org/citation.cfm?id=2523501.2523502)
+* [SCREWED Paper](http://dl.acm.org/citation.cfm?id=2666141.2666143)
