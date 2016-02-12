@@ -42,6 +42,8 @@
 #include "net/llsec/adaptivesec/akes-trickle.h"
 #include "net/llsec/adaptivesec/adaptivesec.h"
 #include "net/llsec/anti-replay.h"
+#include "net/llsec/adaptivesec/potr.h"
+#include "net/mac/contikimac/secrdc.h"
 #include "net/cmd-broker.h"
 #include "net/packetbuf.h"
 #include "lib/csprng.h"
@@ -63,7 +65,7 @@ static void send_ack(struct akes_nbr_entry *entry);
 static void send_updateack(struct akes_nbr_entry *entry);
 
 /* A random challenge, which will be attached to HELLO commands */
-static uint8_t hello_challenge[AKES_NBR_CHALLENGE_LEN];
+uint8_t akes_hello_challenge[AKES_NBR_CHALLENGE_LEN];
 static struct cmd_broker_subscription subscription;
 
 /*---------------------------------------------------------------------------*/
@@ -140,7 +142,7 @@ generate_pairwise_key(uint8_t *result, uint8_t *shared_secret)
 void
 akes_change_hello_challenge(void)
 {
-  csprng_rand(hello_challenge, AKES_NBR_CHALLENGE_LEN);
+  csprng_rand(akes_hello_challenge, AKES_NBR_CHALLENGE_LEN);
 }
 /*---------------------------------------------------------------------------*/
 void
@@ -148,10 +150,14 @@ akes_broadcast_hello(void)
 {
   uint8_t *payload;
 
+#if POTR_ENABLED
+  potr_clear_cached_otps();
+#endif /* POTR_ENABLED */
+
   payload = adaptivesec_prepare_command(AKES_HELLO_IDENTIFIER, &linkaddr_null);
 
   /* write payload */
-  akes_nbr_copy_challenge(payload, hello_challenge);
+  akes_nbr_copy_challenge(payload, akes_hello_challenge);
   payload += AKES_NBR_CHALLENGE_LEN;
 
   packetbuf_set_datalen(1        /* command frame identifier */
@@ -168,6 +174,15 @@ akes_get_random_waiting_period(void)
   return CLOCK_SECOND + (((AKES_MAX_WAITING_PERIOD - 1) * CLOCK_SECOND * (uint32_t)random_rand()) / RANDOM_RAND_MAX);
 }
 /*---------------------------------------------------------------------------*/
+int
+akes_is_acceptable_hello(struct akes_nbr_entry *entry)
+{
+  akes_nbr_delete_expired_tentatives();
+  return (akes_nbr_count(AKES_NBR_TENTATIVE) < AKES_NBR_MAX_TENTATIVES)
+      && !(entry && entry->tentative)
+      && akes_nbr_free_slots();
+}
+/*---------------------------------------------------------------------------*/
 static enum cmd_broker_result
 on_hello(uint8_t *payload)
 {
@@ -178,15 +193,15 @@ on_hello(uint8_t *payload)
 
   akes_nbr_delete_expired_tentatives();
   entry = akes_nbr_get_sender_entry();
-  if(entry && entry->tentative) {
-    PRINTF("akes: Received HELLO from tentative neighbor\n");
+  if(!akes_is_acceptable_hello(entry)) {
+    PRINTF("akes: Ignored HELLO\n");
     return CMD_BROKER_ERROR;
   }
 
   if(entry && entry->permanent) {
-#if ANTI_REPLAY_WITH_SUPPRESSION
+#if ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED
     anti_replay_restore_counter(&entry->permanent->anti_replay_info);
-#endif /* ANTI_REPLAY_WITH_SUPPRESSION */
+#endif /* ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED */
     switch(ADAPTIVESEC_STRATEGY.verify(entry->permanent)) {
     case ADAPTIVESEC_VERIFY_SUCCESS:
       akes_nbr_prolong(entry->permanent);
@@ -195,9 +210,11 @@ on_hello(uint8_t *payload)
     case ADAPTIVESEC_VERIFY_INAUTHENTIC:
       PRINTF("akes: Starting new session with permanent neighbor\n");
       break;
+#if !POTR_ENABLED
     case ADAPTIVESEC_VERIFY_REPLAYED:
       PRINTF("akes: Replayed HELLO\n");
       return CMD_BROKER_ERROR;
+#endif /* !POTR_ENABLED */
     }
   }
 
@@ -236,6 +253,10 @@ send_helloack(void *ptr)
 
   /* generate pairwise key */
   entry->tentative->status = AKES_NBR_TENTATIVE_AWAITING_ACK;
+#if POTR_ENABLED
+  /* create HELLOACK OTP */
+  potr_create_special_otp(&entry->tentative->otp, &linkaddr_node_addr, challenges);
+#endif /* POTR_ENABLED */
   secret = AKES_SCHEME.get_secret_with_hello_sender(akes_nbr_get_addr(entry));
   if(!secret) {
     PRINTF("akes: could not get secret with HELLO sender\n");
@@ -270,7 +291,7 @@ on_helloack(uint8_t *payload, int p_flag)
   }
 
   /* copy challenges and generate key */
-  akes_nbr_copy_challenge(key, hello_challenge);
+  akes_nbr_copy_challenge(key, akes_hello_challenge);
   akes_nbr_copy_challenge(key + AKES_NBR_CHALLENGE_LEN, payload);
   generate_pairwise_key(key, secret);
 
@@ -326,6 +347,10 @@ on_helloack(uint8_t *payload, int p_flag)
   entry->tentative->expiration_time = clock_seconds() + AKES_HELLO_DURATION;
   akes_nbr_copy_key(entry->tentative->tentative_pairwise_key, key);
 #endif /* AKES_NBR_WITH_PAIRWISE_KEYS */
+#if POTR_ENABLED
+  /* create ACK OTP */
+  potr_create_special_otp(&entry->permanent->otp, &linkaddr_node_addr, payload);
+#endif /* POTR_ENABLED */
   akes_nbr_update(entry->permanent,
       payload + AKES_NBR_CHALLENGE_LEN,
       AKES_NBR_WITH_GROUP_KEYS);
@@ -341,6 +366,14 @@ send_ack(struct akes_nbr_entry *entry)
   adaptivesec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
+int
+akes_is_acceptable_ack(struct akes_nbr_entry *entry)
+{
+  return entry
+      && entry->tentative
+      && (entry->tentative->status == AKES_NBR_TENTATIVE_AWAITING_ACK);
+}
+/*---------------------------------------------------------------------------*/
 static enum cmd_broker_result
 on_ack(uint8_t *payload)
 {
@@ -354,10 +387,11 @@ on_ack(uint8_t *payload)
   anti_replay_parse_counter(payload + 1);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
   entry = akes_nbr_get_sender_entry();
-  if(!entry
-      || !entry->tentative
-      || (entry->tentative->status != AKES_NBR_TENTATIVE_AWAITING_ACK)
+  if(!akes_is_acceptable_ack(entry)
       || adaptivesec_verify(entry->tentative->tentative_pairwise_key)) {
+#if POTR_ENABLED
+    akes_nbr_delete(entry, AKES_NBR_TENTATIVE);
+#endif /* POTR_ENABLED */
     PRINTF("akes: Invalid ACK\n");
     return CMD_BROKER_ERROR;
   }
@@ -397,14 +431,15 @@ on_update(uint8_t cmd_id, uint8_t *payload)
     PRINTF("akes: Received invalid %s\n", (cmd_id == AKES_UPDATE_IDENTIFIER) ? "UPDATE" : "UPDATEACK");
     return CMD_BROKER_ERROR;
   }
-#if ANTI_REPLAY_WITH_SUPPRESSION
+#if !SECRDC_WITH_SECURE_PHASE_LOCK
+#if ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED
   anti_replay_parse_counter(payload + 1);
-#endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-  if(ADAPTIVESEC_STRATEGY.verify(entry->permanent)
-      != ADAPTIVESEC_VERIFY_SUCCESS) {
+#endif /* ANTI_REPLAY_WITH_SUPPRESSION  && !POTR_ENABLED */
+  if(ADAPTIVESEC_STRATEGY.verify(entry->permanent)) {
     PRINTF("akes: Received invalid %s\n", (cmd_id == AKES_UPDATE_IDENTIFIER) ? "UPDATE" : "UPDATEACK");
     return CMD_BROKER_ERROR;
   }
+#endif /* !SECRDC_WITH_SECURE_PHASE_LOCK */
 
   akes_nbr_update(entry->permanent, payload, 0);
 

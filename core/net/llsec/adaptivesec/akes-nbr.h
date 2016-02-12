@@ -46,6 +46,8 @@
 #include "lib/aes-128.h"
 #include "sys/clock.h"
 #include "sys/ctimer.h"
+#include "net/llsec/adaptivesec/potr.h"
+#include "net/mac/contikimac/secrdc.h"
 
 #ifdef AKES_NBR_CONF_MAX_TENTATIVES
 #define AKES_NBR_MAX_TENTATIVES         AKES_NBR_CONF_MAX_TENTATIVES
@@ -122,6 +124,12 @@ struct akes_nbr {
   struct anti_replay_info anti_replay_info;
   clock_time_t expiration_time;
   uint8_t sent_authentic_hello;
+#if POTR_ENABLED
+  potr_otp_t otp;
+#endif /* POTR_ENABLED */
+#if SECRDC_ENABLED && SECRDC_WITH_PHASE_LOCK
+  struct secrdc_phase phase;
+#endif /* SECRDC_ENABLED && SECRDC_WITH_PHASE_LOCK */
 
   union {
     /* permanent */
@@ -164,6 +172,7 @@ linkaddr_t *akes_nbr_get_addr(struct akes_nbr_entry *entry);
 struct akes_nbr_entry *akes_nbr_head(void);
 struct akes_nbr_entry *akes_nbr_next(struct akes_nbr_entry *current);
 int akes_nbr_count(enum akes_nbr_status status);
+int akes_nbr_free_slots(void);
 struct akes_nbr_entry *akes_nbr_new(enum akes_nbr_status status);
 void akes_nbr_update(struct akes_nbr *nbr, uint8_t *data, int with_group_key);
 void akes_nbr_do_prolong(struct akes_nbr *nbr, uint16_t seconds);

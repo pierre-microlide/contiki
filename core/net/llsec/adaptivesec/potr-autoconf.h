@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, Hasso-Plattner-Institut.
+ * Copyright (c) 2016, Hasso-Plattner-Institut.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,18 +32,24 @@
 
 /**
  * \file
- *         CCM* convenience functions for MAC security
+ *         Autoconfigures POTR
  * \author
- *         Justin King-Lacroix <justin.kinglacroix@gmail.com>
  *         Konrad Krentz <konrad.krentz@gmail.com>
  */
 
-#ifndef CCM_STAR_PACKETBUF_H_
-#define CCM_STAR_PACKETBUF_H_
-
-#include "lib/ccm-star.h"
-
-void ccm_star_packetbuf_set_nonce(uint8_t *nonce, int forward);
-void ccm_star_packetbuf_set_acknowledgement_nonce(uint8_t *nonce, int forward);
-
-#endif /* CCM_STAR_PACKETBUF_H_ */
+#undef POTR_CONF_ENABLED
+#define POTR_CONF_ENABLED                  1
+#undef ADAPTIVESEC_CONF_DECORATED_FRAMER
+#define ADAPTIVESEC_CONF_DECORATED_FRAMER  potr_framer
+#undef AKES_NBR_CONF_WITH_GROUP_KEYS
+#define AKES_NBR_CONF_WITH_GROUP_KEYS      1
+#undef NETSTACK_CONF_RDC
+#define NETSTACK_CONF_RDC                  secrdc_driver
+#undef SECRDC_CONF_ENABLED
+#define SECRDC_CONF_ENABLED                1
+#undef AES_128_CONF_WITH_LOCKING
+#define AES_128_CONF_WITH_LOCKING          1
+#undef NBR_TABLE_CONF_WITH_LOCKING
+#define NBR_TABLE_CONF_WITH_LOCKING        1
+#undef AKES_NBR_CONF_WITH_LOCKING
+#define AKES_NBR_CONF_WITH_LOCKING         1

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, Hasso-Plattner-Institut.
+ * Copyright (c) 2016, Hasso-Plattner-Institut.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,18 +32,64 @@
 
 /**
  * \file
- *         CCM* convenience functions for MAC security
+ *         Practical On-the-fly Rejection (POTR).
  * \author
- *         Justin King-Lacroix <justin.kinglacroix@gmail.com>
  *         Konrad Krentz <konrad.krentz@gmail.com>
  */
 
-#ifndef CCM_STAR_PACKETBUF_H_
-#define CCM_STAR_PACKETBUF_H_
+#ifndef POTR_H_
+#define POTR_H_
 
-#include "lib/ccm-star.h"
+#include "contiki.h"
+#include "net/mac/framer.h"
+#include "net/linkaddr.h"
+#include "net/llsec/llsec802154.h"
 
-void ccm_star_packetbuf_set_nonce(uint8_t *nonce, int forward);
-void ccm_star_packetbuf_set_acknowledgement_nonce(uint8_t *nonce, int forward);
+#ifdef POTR_CONF_ENABLED
+#define POTR_ENABLED POTR_CONF_ENABLED
+#else /* POTR_CONF_ENABLED */
+#define POTR_ENABLED 0
+#endif /* POTR_CONF_ENABLED */
 
-#endif /* CCM_STAR_PACKETBUF_H_ */
+#ifdef POTR_CONF_OTP_LEN
+#define POTR_OTP_LEN POTR_CONF_OTP_LEN
+#else /* POTR_CONF_OTP_LEN */
+#define POTR_OTP_LEN 3
+#endif /* POTR_CONF_OTP_LEN */
+
+#if LLSEC802154_USES_AUX_HEADER
+#define POTR_FRAME_COUNTER_LEN 4
+#else /* LLSEC802154_USES_AUX_HEADER */
+#define POTR_FRAME_COUNTER_LEN 1
+#endif /* LLSEC802154_USES_AUX_HEADER */
+
+#define POTR_HEADER_LEN (1\
+                         + LINKADDR_SIZE\
+                         + POTR_FRAME_COUNTER_LEN\
+                         + POTR_OTP_LEN)
+
+enum potr_frame_type {
+  POTR_FRAME_TYPE_UNICAST_DATA = 0,
+  POTR_FRAME_TYPE_UNICAST_COMMAND,
+  POTR_FRAME_TYPE_HELLOACK,
+  POTR_FRAME_TYPE_HELLOACK_P,
+  POTR_FRAME_TYPE_ACK,
+  POTR_FRAME_TYPE_BROADCAST_DATA,
+  POTR_FRAME_TYPE_BROADCAST_COMMAND,
+  POTR_FRAME_TYPE_HELLO,
+  POTR_FRAME_TYPE_ACKNOWLEDGEMENT
+};
+
+typedef union {
+  uint8_t u8[POTR_OTP_LEN];
+} potr_otp_t;
+
+extern const struct framer potr_framer;
+
+void potr_clear_cached_otps(void);
+void potr_create_special_otp(potr_otp_t *result, const linkaddr_t *src, uint8_t *challenge);
+void potr_init(void);
+int potr_parse_and_validate(void);
+int potr_shall_send_acknowledgement(void);
+
+#endif /* POTR_H_ */

@@ -104,10 +104,12 @@ verify(struct akes_nbr *sender)
     return ADAPTIVESEC_VERIFY_INAUTHENTIC;
   }
 
+#if !POTR_ENABLED
   if(anti_replay_was_replayed(&sender->anti_replay_info)) {
     PRINTF("noncoresec-strategy: Replayed\n");
     return ADAPTIVESEC_VERIFY_REPLAYED;
   }
+#endif /* !POTR_ENABLED */
 
   return ADAPTIVESEC_VERIFY_SUCCESS;
 }

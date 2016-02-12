@@ -94,4 +94,11 @@ ccm_star_packetbuf_set_nonce(uint8_t *nonce, int forward)
 #endif /* LLSEC802154_USES_AUX_HEADER */
 }
 /*---------------------------------------------------------------------------*/
+void
+ccm_star_packetbuf_set_acknowledgement_nonce(uint8_t *nonce, int forward)
+{
+  ccm_star_packetbuf_set_nonce(nonce, forward);
+  nonce[12] = 0xFE;
+}
+/*---------------------------------------------------------------------------*/
 #endif /* LLSEC802154_USES_FRAME_COUNTER */

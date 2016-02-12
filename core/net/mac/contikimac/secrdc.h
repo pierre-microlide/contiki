@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, Hasso-Plattner-Institut.
+ * Copyright (c) 2016, Hasso-Plattner-Institut.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,18 +32,51 @@
 
 /**
  * \file
- *         CCM* convenience functions for MAC security
+ *         A secure version of ContikiMAC.
  * \author
- *         Justin King-Lacroix <justin.kinglacroix@gmail.com>
  *         Konrad Krentz <konrad.krentz@gmail.com>
  */
 
-#ifndef CCM_STAR_PACKETBUF_H_
-#define CCM_STAR_PACKETBUF_H_
+#ifndef SECRDC_H_
+#define SECRDC_H_
 
-#include "lib/ccm-star.h"
+#include "net/mac/rdc.h"
+#include "net/llsec/adaptivesec/potr.h"
 
-void ccm_star_packetbuf_set_nonce(uint8_t *nonce, int forward);
-void ccm_star_packetbuf_set_acknowledgement_nonce(uint8_t *nonce, int forward);
+#ifdef SECRDC_CONF_ENABLED
+#define SECRDC_ENABLED SECRDC_CONF_ENABLED
+#else /* SECRDC_CONF_ENABLED */
+#define SECRDC_ENABLED 0
+#endif /* SECRDC_CONF_ENABLED */
 
-#endif /* CCM_STAR_PACKETBUF_H_ */
+#if POTR_ENABLED
+#ifdef SECRDC_CONF_WITH_SECURE_PHASE_LOCK
+#define SECRDC_WITH_SECURE_PHASE_LOCK SECRDC_CONF_WITH_SECURE_PHASE_LOCK
+#else /* SECRDC_CONF_WITH_SECURE_PHASE_LOCK */
+#define SECRDC_WITH_SECURE_PHASE_LOCK 1
+#endif /* SECRDC_CONF_WITH_SECURE_PHASE_LOCK */
+#else /* POTR_ENABLED */
+#define SECRDC_WITH_SECURE_PHASE_LOCK 0
+#endif /* POTR_ENABLED */
+
+#if SECRDC_WITH_SECURE_PHASE_LOCK || !SECRDC_ENABLED
+#define SECRDC_WITH_ORIGINAL_PHASE_LOCK 0
+#else /* SECRDC_WITH_SECURE_PHASE_LOCK */
+#ifdef SECRDC_CONF_WITH_ORIGINAL_PHASE_LOCK
+#define SECRDC_WITH_ORIGINAL_PHASE_LOCK SECRDC_CONF_WITH_ORIGINAL_PHASE_LOCK
+#else /* SECRDC_CONF_WITH_ORIGINAL_PHASE_LOCK */
+#define SECRDC_WITH_ORIGINAL_PHASE_LOCK 1
+#endif /* SECRDC_CONF_WITH_ORIGINAL_PHASE_LOCK */
+#endif /* SECRDC_WITH_SECURE_PHASE_LOCK */
+
+#define SECRDC_WITH_PHASE_LOCK (SECRDC_WITH_SECURE_PHASE_LOCK || SECRDC_WITH_ORIGINAL_PHASE_LOCK)
+
+#if SECRDC_WITH_PHASE_LOCK
+struct secrdc_phase {
+  rtimer_clock_t t;
+};
+#endif /* SECRDC_WITH_PHASE_LOCK */
+
+extern const struct rdc_driver secrdc_driver;
+
+#endif /* SECRDC_H_ */

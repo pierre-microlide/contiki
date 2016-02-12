@@ -46,6 +46,7 @@
 #include "net/llsec/adaptivesec/akes-nbr.h"
 #include "lib/ccm-star.h"
 #include "lib/aes-128.h"
+#include "net/llsec/adaptivesec/potr.h"
 
 #if AKES_NBR_KEY_LEN == 16
 #define ADAPTIVESEC_SET_KEY(key)      CCM_STAR.set_key(key)
@@ -92,7 +93,9 @@
 enum adaptivesec_verify {
   ADAPTIVESEC_VERIFY_SUCCESS,
   ADAPTIVESEC_VERIFY_INAUTHENTIC,
+#if !POTR_ENABLED
   ADAPTIVESEC_VERIFY_REPLAYED
+#endif /* !POTR_ENABLED */
 };
 
 /**

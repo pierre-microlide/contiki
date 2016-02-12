@@ -119,6 +119,12 @@ akes_nbr_count(enum akes_nbr_status status)
   return count;
 }
 /*---------------------------------------------------------------------------*/
+int
+akes_nbr_free_slots(void)
+{
+  return memb_numfree(&nbrs_memb);
+}
+/*---------------------------------------------------------------------------*/
 #if AKES_NBR_WITH_INDICES
 static void
 init_local_index(struct akes_nbr_entry *entry)
@@ -178,6 +184,9 @@ akes_nbr_new(enum akes_nbr_status status)
     entry->refs[status]->status = status;
   }
   entry->refs[status]->sent_authentic_hello = status;
+#if SECRDC_ENABLED && SECRDC_WITH_PHASE_LOCK
+  entry->refs[status]->phase.t = 0;
+#endif /* SECRDC_ENABLED && SECRDC_WITH_PHASE_LOCK */
   AKES_NBR_RELEASE_LOCK();
   return entry;
 }

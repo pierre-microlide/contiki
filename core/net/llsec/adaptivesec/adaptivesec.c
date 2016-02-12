@@ -40,7 +40,9 @@
 #include "net/llsec/adaptivesec/adaptivesec.h"
 #include "net/llsec/adaptivesec/akes-trickle.h"
 #include "net/llsec/adaptivesec/akes.h"
+#include "net/llsec/adaptivesec/potr.h"
 #include "net/llsec/ccm-star-packetbuf.h"
+#include "net/mac/contikimac/secrdc.h"
 #include "net/cmd-broker.h"
 #include "net/netstack.h"
 #include "net/packetbuf.h"
@@ -128,9 +130,9 @@ adaptivesec_prepare_command(uint8_t cmd_id, const linkaddr_t *dest)
   /* create frame */
   packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, dest);
   packetbuf_set_attr(PACKETBUF_ATTR_FRAME_TYPE, FRAME802154_CMDFRAME);
-#if !ANTI_REPLAY_WITH_SUPPRESSION
+#if !ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED
   framer_802154_set_seqno();
-#endif /* !ANTI_REPLAY_WITH_SUPPRESSION */
+#endif /* !ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED */
   payload[0] = cmd_id;
 
   return payload + 1;
@@ -165,9 +167,9 @@ send(mac_callback_t sent, void *ptr)
     packetbuf_set_attr(PACKETBUF_ATTR_NEIGHBOR_INDEX, entry->local_index);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
   }
-#if !ANTI_REPLAY_WITH_SUPPRESSION
+#if !ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED
   framer_802154_set_seqno();
-#endif /* ANTI_REPLAY_WITH_SUPPRESSION */
+#endif /* ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED */
   ADAPTIVESEC_STRATEGY.send(sent, ptr);
 }
 /*---------------------------------------------------------------------------*/
@@ -255,6 +257,9 @@ input(void)
 {
   struct akes_nbr_entry *entry;
 
+#if LLSEC802154_USES_AUX_HEADER && POTR_ENABLED
+  packetbuf_set_attr(PACKETBUF_ATTR_SECURITY_LEVEL, adaptivesec_get_sec_lvl());
+#endif /* LLSEC802154_USES_AUX_HEADER && POTR_ENABLED */
   switch(packetbuf_attr(PACKETBUF_ATTR_FRAME_TYPE)) {
   case FRAME802154_CMDFRAME:
     cmd_broker_publish();
@@ -266,13 +271,20 @@ input(void)
       return;
     }
 
-#if ANTI_REPLAY_WITH_SUPPRESSION
+#if SECRDC_WITH_SECURE_PHASE_LOCK
+    if(packetbuf_holds_broadcast()
+        && ADAPTIVESEC_STRATEGY.verify(entry->permanent)) {
+      return;
+    }
+#else /* SECRDC_WITH_SECURE_PHASE_LOCK */
+#if ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED
     anti_replay_restore_counter(&entry->permanent->anti_replay_info);
-#endif /* ANTI_REPLAY_WITH_SUPPRESSION */
+#endif /* ANTI_REPLAY_WITH_SUPPRESSION && !POTR_ENABLED */
 
     if(ADAPTIVESEC_STRATEGY.verify(entry->permanent) != ADAPTIVESEC_VERIFY_SUCCESS) {
       return;
     }
+#endif /* SECRDC_WITH_SECURE_PHASE_LOCK */
 
     akes_nbr_prolong(entry->permanent);
 
