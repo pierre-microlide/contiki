@@ -131,8 +131,10 @@ prepare_update_command(uint8_t cmd_id,
 static void
 generate_pairwise_key(uint8_t *result, uint8_t *shared_secret)
 {
+  AES_128_GET_LOCK();
   ADAPTIVESEC_SET_KEY(shared_secret);
   AES_128.encrypt(result);
+  AES_128_RELEASE_LOCK();
 }
 /*---------------------------------------------------------------------------*/
 void

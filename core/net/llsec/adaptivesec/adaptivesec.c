@@ -225,12 +225,14 @@ adaptivesec_aead(uint8_t *key, int shall_encrypt, uint8_t *result, int forward)
     m_len = 0;
   }
 
+  AES_128_GET_LOCK();
   ADAPTIVESEC_SET_KEY(key);
   CCM_STAR.aead(nonce,
       m, m_len,
       a, a_len,
       result, adaptivesec_mic_len(),
       forward);
+  AES_128_RELEASE_LOCK();
 }
 /*---------------------------------------------------------------------------*/
 int
