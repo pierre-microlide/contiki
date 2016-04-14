@@ -31,7 +31,15 @@ MODULES += core/net core/net/mac \
            core/net/llsec
 
 PYTHON = python
-BSL_FLAGS += -e -w -v -b 450000
+BSL_FLAGS += -e -w -v -b 450000 --bootloader-invert-lines
+
+#ifndef USBDEVPREFIX
+  USBDEVPREFIX=/dev/ttyUSB
+#endif
+
+ifdef MOTE
+  PORT := $(USBDEVPREFIX)$(MOTE)
+endif
 
 ifdef PORT
   BSL_FLAGS += -p $(PORT)
@@ -48,3 +56,7 @@ else
 	                               sort -g | head -1))
 	$(PYTHON) $(BSL) $(BSL_FLAGS) $(BSL_ADDRESS_ARG) $<
 endif
+
+SERIALDUMP = $(CONTIKI)/tools/sky/serialdump-linux 
+login:
+	$(SERIALDUMP) -b115200 $(PORT)
