@@ -33,6 +33,14 @@ MODULES += core/net core/net/mac \
 PYTHON = python
 BSL_FLAGS += -e -w -v -b 450000 --bootloader-invert-lines
 
+#ifndef USBDEVPREFIX
+  USBDEVPREFIX=/dev/ttyUSB
+#endif
+
+ifdef MOTE
+  PORT := $(USBDEVPREFIX)$(MOTE)
+endif
+
 ifdef PORT
   BSL_FLAGS += -p $(PORT)
 endif
