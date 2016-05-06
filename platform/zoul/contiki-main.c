@@ -207,6 +207,7 @@ main(void)
   csprng_init();
 #endif
 
+  queuebuf_init();
   netstack_init();
   set_rf_params();
 
@@ -221,7 +222,6 @@ main(void)
 
 #if NETSTACK_CONF_WITH_IPV6
   memcpy(&uip_lladdr.addr, &linkaddr_node_addr, sizeof(uip_lladdr.addr));
-  queuebuf_init();
   process_start(&tcpip_process, NULL);
 #endif /* NETSTACK_CONF_WITH_IPV6 */
 
