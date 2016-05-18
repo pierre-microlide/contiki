@@ -57,6 +57,7 @@
 #include "net/nbr-table.h"
 #include "lpm.h"
 #include "lib/random.h"
+#include "dev/gpio.h"
 
 #ifdef SECRDC_CONF_WITH_DOZING
 #define WITH_DOZING SECRDC_CONF_WITH_DOZING
@@ -295,6 +296,14 @@ init(void)
   PT_INIT(&pt);
   duty_cycle_next = RTIMER_NOW() + WAKEUP_INTERVAL;
   schedule_duty_cycle(duty_cycle_next);
+#ifdef SECRDC_CONF_RANDOMIZE
+  /* AD3/DIO3 */
+  GPIO_SET_OUTPUT(GPIO_D_BASE, 1);
+#endif /* SECRDC_CONF_RANDOMIZE */
+#ifdef SECRDC_CONF_SENDER_ENERGY
+  /* AD3/DIO3 */
+  GPIO_SET_OUTPUT(GPIO_D_BASE, 1);
+#endif /* SECRDC_CONF_SENDER_ENERGY */
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -336,6 +345,19 @@ static char
 duty_cycle(void)
 {
   PT_BEGIN(&pt);
+
+#ifdef SECRDC_CONF_RANDOMIZE
+  {
+    rtimer_clock_t now;
+
+    now = RTIMER_NOW();
+    GPIO_SET_PIN(GPIO_D_BASE, 1);
+    while(!has_timed_out(now + 10));
+    GPIO_CLR_PIN(GPIO_D_BASE, 1);
+    schedule_duty_cycle(now + 33);
+    PT_YIELD(&pt);
+  }
+#endif /* SECRDC_CONF_RANDOMIZE */
 
   is_duty_cycling = 1;
   lpm_set_max_pm(1);
@@ -724,6 +746,9 @@ PROCESS_THREAD(post_processing, ev, data)
                   - RECEIVE_CALIBRATION_TIME
                   - CCA_DURATION
                   - TRANSMIT_CALIBRATION_TIME
+#ifdef SECRDC_CONF_SENDER_ENERGY
+                  - 33
+#endif /* SECRDC_CONF_SENDER_ENERGY */
                   - u.strobe.uncertainty));
             }
 #else /* SECRDC_WITH_SECURE_PHASE_LOCK */
@@ -732,7 +757,11 @@ PROCESS_THREAD(post_processing, ev, data)
                   - RECEIVE_CALIBRATION_TIME
                   - CCA_DURATION
                   - TRANSMIT_CALIBRATION_TIME
+#ifdef SECRDC_CONF_SENDER_ENERGY
+                  - 33));
+#else /* SECRDC_CONF_SENDER_ENERGY */
                   - PHASE_LOCK_GUARD_TIME));
+#endif /* SECRDC_CONF_SENDER_ENERGY */
 #endif /* SECRDC_WITH_SECURE_PHASE_LOCK */
           }
         }
@@ -752,6 +781,9 @@ PROCESS_THREAD(post_processing, ev, data)
     prepare_radio_for_duty_cycle();
     memset(&u.duty_cycle, 0, sizeof(u.duty_cycle));
     duty_cycle_next = shift_to_future(duty_cycle_next);
+#ifdef SECRDC_CONF_RANDOMIZE
+    duty_cycle_next += random_rand() & (WAKEUP_INTERVAL - 1);
+#endif /* SECRDC_CONF_RANDOMIZE */
     schedule_duty_cycle(duty_cycle_next);
   }
 
@@ -799,6 +831,18 @@ strobe(void)
   uint8_t acknowledgement[ACKNOWLEDGEMENT_LEN];
 
   PT_BEGIN(&pt);
+#ifdef SECRDC_CONF_SENDER_ENERGY
+  {
+    rtimer_clock_t now;
+
+    now = RTIMER_NOW();
+    GPIO_SET_PIN(GPIO_D_BASE, 1);
+    while(!has_timed_out(now + 10));
+    GPIO_CLR_PIN(GPIO_D_BASE, 1);
+    schedule_strobe(now + 33);
+    PT_YIELD(&pt);
+  }
+#endif /* SECRDC_CONF_SENDER_ENERGY */
   is_strobing = 1;
   lpm_set_max_pm(0);
 
@@ -810,7 +854,11 @@ strobe(void)
 
 #if SECRDC_WITH_SECURE_PHASE_LOCK
   if(u.strobe.uncertainty) {
+#ifdef SECRDC_CONF_NO_LIMIT
+    u.strobe.timeout = RTIMER_NOW() + WAKEUP_INTERVAL;
+#else /* SECRDC_CONF_NO_LIMIT */
     u.strobe.timeout = shift_to_future(u.strobe.phase->t + u.strobe.uncertainty);
+#endif /* SECRDC_CONF_NO_LIMIT */
     /* if we come from PM0, we will be too early */
     while(rtimer_greater_than(timer.time, RTIMER_NOW()));
   } else
@@ -909,8 +957,12 @@ strobe(void)
 static int
 should_strobe_again(void)
 {
+#ifdef SECRDC_CONF_INFINITE_STROBE
+  return 1;
+#else /* SECRDC_CONF_INFINITE_STROBE */
   return rtimer_greater_than(u.strobe.timeout, u.strobe.next_transmission + TRANSMIT_CALIBRATION_TIME)
       || !u.strobe.sent_once_more++;
+#endif /* SECRDC_CONF_INFINITE_STROBE */
 }
 /*---------------------------------------------------------------------------*/
 static int
