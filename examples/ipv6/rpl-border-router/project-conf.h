@@ -64,6 +64,10 @@
 #define WEBSERVER_CONF_CFS_CONNS 2
 #endif
 
+/* SLIP does not work otherwise */
+#undef LPM_CONF_MAX_PM
+#define LPM_CONF_MAX_PM 0
+
 #if 0
 /* enable the software implementation of AES-128 */
 #undef AES_128_CONF
@@ -71,7 +75,12 @@
 #endif
 
 /* configure RDC layer */
-#if 0
+#if 1
+#undef NETSTACK_CONF_RDC
+#define NETSTACK_CONF_RDC secrdc_driver
+#undef SECRDC_CONF_ENABLED
+#define SECRDC_CONF_ENABLED 1
+#elif 0
 #undef CONTIKIMAC_CONF_COMPOWER
 #define CONTIKIMAC_CONF_COMPOWER 0
 #undef RDC_CONF_HARDWARE_CSMA
@@ -84,11 +93,13 @@
 #endif
 
 /* configure MAC layer */
-#if 0
-#undef CONTIKIMAC_CONF_WITH_PHASE_OPTIMIZATION
-#define CONTIKIMAC_CONF_WITH_PHASE_OPTIMIZATION 1
+#if 1
 #undef NETSTACK_CONF_MAC
 #define NETSTACK_CONF_MAC csma_driver
+#undef CSMA_CONF_MAX_FRAME_RETRIES
+#define CSMA_CONF_MAX_FRAME_RETRIES 3
+#undef CSMA_CONF_MAX_NEIGHBOR_QUEUES
+#define CSMA_CONF_MAX_NEIGHBOR_QUEUES 5
 #else
 #undef NETSTACK_CONF_MAC
 #define NETSTACK_CONF_MAC nullmac_driver
@@ -109,6 +120,9 @@
 #else
 #include "net/llsec/adaptivesec/noncoresec-autoconf.h"
 #endif
+#if 1
+#include "net/llsec/adaptivesec/potr-autoconf.h"
+#endif
 #endif
 
 /* configure ContikiMAC FRAMER */
@@ -119,7 +133,21 @@
 #define CONTIKIMAC_FRAMER_CONF_DECORATED_FRAMER adaptivesec_framer
 #undef ADAPTIVESEC_CONF_DECORATED_FRAMER
 #define ADAPTIVESEC_CONF_DECORATED_FRAMER framer_802154
+#elif 1
+#undef NETSTACK_CONF_FRAMER
+#define NETSTACK_CONF_FRAMER contikimac_framer
+#undef CONTIKIMAC_FRAMER_CONF_DECORATED_FRAMER
+#define CONTIKIMAC_FRAMER_CONF_DECORATED_FRAMER adaptivesec_framer
+#undef ADAPTIVESEC_CONF_DECORATED_FRAMER
+#define ADAPTIVESEC_CONF_DECORATED_FRAMER potr_framer
+#undef POTR_CONF_WITH_CONTIKIMAC_FRAMER
+#define POTR_CONF_WITH_CONTIKIMAC_FRAMER 1
+#else
+#undef ADAPTIVESEC_CONF_DECORATED_FRAMER
+#define ADAPTIVESEC_CONF_DECORATED_FRAMER framer_802154
 #endif
+#undef CONTIKIMAC_FRAMER_CONF_SHORTEST_PACKET_SIZE
+#define CONTIKIMAC_FRAMER_CONF_SHORTEST_PACKET_SIZE 28
 
 /* set a seeder */
 #undef CSPRNG_CONF_SEEDER
