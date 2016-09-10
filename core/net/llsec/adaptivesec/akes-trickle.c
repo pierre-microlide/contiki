@@ -211,7 +211,9 @@ akes_trickle_reset(void)
 void
 akes_trickle_start(void)
 {
+#if !AKES_QUIET
   akes_init();
   on_timeout(NULL);
+#endif /* !AKES_QUIET */
 }
 /*---------------------------------------------------------------------------*/

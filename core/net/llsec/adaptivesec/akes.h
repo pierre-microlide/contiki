@@ -72,6 +72,13 @@
 
 #define AKES_UPDATES_SEC_LVL           (ADAPTIVESEC_UNICAST_SEC_LVL & 3)
 
+/* if AKES_QUIET is on, AKES sends neither HELLOs nor UPDATEs */
+#if AKES_CONF_QUIET
+#define AKES_QUIET AKES_CONF_QUIET
+#else /* AKES_CONF_QUIET */
+#define AKES_QUIET 0
+#endif /* AKES_CONF_QUIET */
+
 /* Command frame identifiers */
 enum {
   AKES_HELLO_IDENTIFIER = 0x0A,

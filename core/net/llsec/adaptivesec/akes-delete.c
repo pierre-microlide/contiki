@@ -129,6 +129,8 @@ akes_delete_on_update_sent(void *ptr, int status, int transmissions)
 void
 akes_delete_init(void)
 {
+#if !AKES_QUIET
   process_start(&delete_process, NULL);
+#endif /* !AKES_QUIET */
 }
 /*---------------------------------------------------------------------------*/
