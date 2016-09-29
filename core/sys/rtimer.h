@@ -123,6 +123,26 @@ int rtimer_set(struct rtimer *task, rtimer_clock_t time,
 void rtimer_run_next(void);
 
 /**
+ * \return     Difference between a and b.
+ * \param a    Smaller than b unless b wrapped around zero
+ */
+rtimer_clock_t rtimer_delta(rtimer_clock_t a, rtimer_clock_t b);
+
+/**
+ * \return     If a is smaller than b
+ * \param a    Reference point
+ * \param b    May wrap around zero
+ */
+int rtimer_smaller_than(rtimer_clock_t a, rtimer_clock_t b);
+
+/**
+ * \return     If a is greater than b
+ * \param a    Reference point
+ * \param b    May wrap around zero
+ */
+int rtimer_greater_than(rtimer_clock_t a, rtimer_clock_t b);
+
+/**
  * \brief      Get the current clock time
  * \return     The current time
  *

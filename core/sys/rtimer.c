@@ -55,6 +55,8 @@
 #endif
 
 static struct rtimer *next_rtimer;
+static const rtimer_clock_t max_rtimer_bit = 1 << ((sizeof(rtimer_clock_t) * 8) - 1);
+static const rtimer_clock_t max_rtimer_value = -1;
 
 /*---------------------------------------------------------------------------*/
 void
@@ -93,6 +95,37 @@ rtimer_run_next(void)
   }
   next_rtimer = NULL;
   t->func(t, t->ptr);
+}
+/*---------------------------------------------------------------------------*/
+rtimer_clock_t
+rtimer_delta(rtimer_clock_t a, rtimer_clock_t b)
+{
+  if(a > b) {
+    /* b wrapped around zero */
+    return b + 1 + (max_rtimer_value - a);
+  } else {
+    return b - a;
+  }
+}
+/*---------------------------------------------------------------------------*/
+int
+rtimer_smaller_than(rtimer_clock_t a, rtimer_clock_t b)
+{
+  /* check if b wrapped around zero */
+  if((a & max_rtimer_bit) > (b & max_rtimer_bit)) {
+    return 1;
+  }
+  return a < b;
+}
+/*---------------------------------------------------------------------------*/
+int
+rtimer_greater_than(rtimer_clock_t a, rtimer_clock_t b)
+{
+  /* check if b wrapped around zero */
+  if((a & max_rtimer_bit) > (b & max_rtimer_bit)) {
+    return 0;
+  }
+  return a > b;
 }
 /*---------------------------------------------------------------------------*/
 
