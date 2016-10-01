@@ -177,6 +177,22 @@ static struct pt slot_operation_pt;
 static PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t));
 static PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t));
 
+static struct packetbuf local_packetbuf;
+static struct packetbuf *actual_packetbuf;
+
+/*---------------------------------------------------------------------------*/
+static void
+enable_local_packetbuf(void)
+{
+  actual_packetbuf = packetbuf;
+  packetbuf = &local_packetbuf;
+}
+/*---------------------------------------------------------------------------*/
+static void
+disable_local_packetbuf(void)
+{
+  packetbuf = actual_packetbuf;
+}
 /*---------------------------------------------------------------------------*/
 /* TSCH locking system. TSCH is locked during slot operations */
 
@@ -499,12 +515,14 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
 #endif
 
       /* get payload */
-      packet = queuebuf_dataptr(current_packet->qb);
-      packet_len = queuebuf_datalen(current_packet->qb);
+      enable_local_packetbuf();
+      queuebuf_to_packetbuf(current_packet->qb);
+      packet = packetbuf_hdrptr();
+      packet_len = packetbuf_totlen();
       /* is this a broadcast packet? (wait for ack?) */
       is_broadcast = current_neighbor->is_broadcast;
       /* read seqno from payload */
-      seqno = ((uint8_t *)(packet))[2];
+      seqno = packetbuf_attr(PACKETBUF_ATTR_MAC_SEQNO);
       /* if this is an EB, then update its Sync-IE */
       if(current_neighbor == n_eb) {
         packet_ready = tsch_packet_update_eb(packet, packet_len, current_packet->tsch_sync_ie_offset);
@@ -516,7 +534,7 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
       if(tsch_is_pan_secured) {
         /* If we are going to encrypt, we need to generate the output in a separate buffer and keep
          * the original untouched. This is to allow for future retransmissions. */
-        int with_encryption = queuebuf_attr(current_packet->qb, PACKETBUF_ATTR_SECURITY_LEVEL) & 0x4;
+        int with_encryption = packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL) & 0x4;
         packet_len += tsch_security_secure_frame(packet, with_encryption ? encrypted_packet : packet, current_packet->header_len,
             packet_len - current_packet->header_len, &current_asn);
         if(with_encryption) {
@@ -524,6 +542,7 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
         }
       }
 #endif /* LLSEC802154_ENABLED */
+      disable_local_packetbuf();
 
       /* prepare packet to send: copy to radio buffer */
       if(packet_ready && NETSTACK_RADIO.prepare(packet, packet_len) == 0) { /* 0 means success */
@@ -562,13 +581,11 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
 
           if(mac_tx_status == RADIO_TX_OK) {
             if(!is_broadcast) {
-              uint8_t ackbuf[TSCH_PACKET_MAX_LEN];
               int ack_len;
               rtimer_clock_t ack_start_time;
               int is_time_source;
               struct ieee802154_ies ack_ies;
               uint8_t ack_hdrlen;
-              frame802154_t frame;
 
 #if TSCH_HW_FRAME_FILTERING
               radio_value_t radio_rx_mode;
@@ -601,21 +618,23 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
 #endif /* TSCH_HW_FRAME_FILTERING */
 
               /* Read ack frame */
-              ack_len = NETSTACK_RADIO.read((void *)ackbuf, sizeof(ackbuf));
+              enable_local_packetbuf();
+              packetbuf_clear();
+              ack_len = NETSTACK_RADIO.read(packetbuf_hdrptr(), PACKETBUF_SIZE);
 
               is_time_source = 0;
               /* The radio driver should return 0 if no valid packets are in the rx buffer */
               if(ack_len > 0) {
                 is_time_source = current_neighbor != NULL && current_neighbor->is_time_source;
-                if(tsch_packet_parse_eack(ackbuf, ack_len, seqno,
-                    &frame, &ack_ies, &ack_hdrlen) == 0) {
+                packetbuf_set_datalen(ack_len);
+                if(tsch_packet_parse_eack(seqno, &ack_ies, &ack_hdrlen) == 0) {
                   ack_len = 0;
                 }
 
 #if LLSEC802154_ENABLED
                 if(ack_len != 0) {
-                  if(!tsch_security_parse_frame(ackbuf, ack_hdrlen, ack_len - ack_hdrlen - tsch_security_mic_len(&frame),
-                      &frame, &current_neighbor->addr, &current_asn)) {
+                  if(!tsch_security_parse_frame(packetbuf_hdrptr(), ack_hdrlen, ack_len - ack_hdrlen - tsch_security_mic_len(),
+                      &current_neighbor->addr, &current_asn)) {
                     TSCH_LOG_ADD(tsch_log_message,
                         snprintf(log->message, sizeof(log->message),
                         "!failed to authenticate ACK"));
@@ -628,6 +647,7 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
                 }
 #endif /* LLSEC802154_ENABLED */
               }
+              disable_local_packetbuf();
 
               if(ack_len != 0) {
                 if(is_time_source) {
@@ -775,19 +795,22 @@ PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t))
       if(NETSTACK_RADIO.pending_packet()) {
         static int frame_valid;
         static int header_len;
-        static frame802154_t frame;
         radio_value_t radio_last_rssi;
 
         /* Read packet */
+        enable_local_packetbuf();
+        packetbuf_clear();
         current_input->len = NETSTACK_RADIO.read((void *)current_input->payload, TSCH_PACKET_MAX_LEN);
+        memcpy(packetbuf_hdrptr(), current_input->payload, current_input->len);
+        packetbuf_set_datalen(current_input->len);
         NETSTACK_RADIO.get_value(RADIO_PARAM_LAST_RSSI, &radio_last_rssi);
         current_input->rx_asn = current_asn;
         current_input->rssi = (signed)radio_last_rssi;
         current_input->channel = current_channel;
-        header_len = frame802154_parse((uint8_t *)current_input->payload, current_input->len, &frame);
-        frame_valid = header_len > 0 &&
-          frame802154_check_dest_panid(&frame) &&
-          frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
+        header_len = NETSTACK_FRAMER.parse();
+        frame_valid = header_len != FRAMER_FAILED;
+        linkaddr_copy(&source_address, packetbuf_addr(PACKETBUF_ADDR_SENDER));
+        linkaddr_copy(&destination_address, packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
 
 #if TSCH_RESYNC_WITH_SFD_TIMESTAMPS
         /* At the end of the reception, get an more accurate estimate of SFD arrival time */
@@ -800,9 +823,9 @@ PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t))
         /* Decrypt and verify incoming frame */
         if(frame_valid) {
           if(tsch_security_parse_frame(
-               current_input->payload, header_len, current_input->len - header_len - tsch_security_mic_len(&frame),
-               &frame, &source_address, &current_asn)) {
-            current_input->len -= tsch_security_mic_len(&frame);
+               current_input->payload, header_len, current_input->len - header_len - tsch_security_mic_len(),
+               &source_address, &current_asn)) {
+            current_input->len -= tsch_security_mic_len();
           } else {
             TSCH_LOG_ADD(tsch_log_message,
                 snprintf(log->message, sizeof(log->message),
@@ -818,87 +841,88 @@ PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t))
 #endif /* LLSEC802154_ENABLED */
 
         if(frame_valid) {
-          if(linkaddr_cmp(&destination_address, &linkaddr_node_addr)
-             || linkaddr_cmp(&destination_address, &linkaddr_null)) {
-            int do_nack = 0;
-            estimated_drift = RTIMER_CLOCK_DIFF(expected_rx_time, rx_start_time);
+          int do_nack = 0;
+          estimated_drift = RTIMER_CLOCK_DIFF(expected_rx_time, rx_start_time);
 
 #if TSCH_TIMESYNC_REMOVE_JITTER
-            /* remove jitter due to measurement errors */
-            if(ABS(estimated_drift) <= TSCH_TIMESYNC_MEASUREMENT_ERROR) {
-              estimated_drift = 0;
-            } else if(estimated_drift > 0) {
-              estimated_drift -= TSCH_TIMESYNC_MEASUREMENT_ERROR;
-            } else {
-              estimated_drift += TSCH_TIMESYNC_MEASUREMENT_ERROR;
-            }
+          /* remove jitter due to measurement errors */
+          if(ABS(estimated_drift) <= TSCH_TIMESYNC_MEASUREMENT_ERROR) {
+            estimated_drift = 0;
+          } else if(estimated_drift > 0) {
+            estimated_drift -= TSCH_TIMESYNC_MEASUREMENT_ERROR;
+          } else {
+            estimated_drift += TSCH_TIMESYNC_MEASUREMENT_ERROR;
+          }
 #endif
 
 #ifdef TSCH_CALLBACK_DO_NACK
-            if(frame.fcf.ack_required) {
-              do_nack = TSCH_CALLBACK_DO_NACK(current_link,
-                  &source_address, &destination_address);
-            }
+          if(packetbuf_attr(PACKETBUF_ATTR_MAC_ACK)) {
+            do_nack = TSCH_CALLBACK_DO_NACK(current_link,
+                &source_address, &destination_address);
+          }
 #endif
+          /* Log every reception */
+          TSCH_LOG_ADD(tsch_log_rx,
+            log->rx.src = TSCH_LOG_ID_FROM_LINKADDR(packetbuf_addr(PACKETBUF_ADDR_SENDER));
+            log->rx.is_unicast = packetbuf_attr(PACKETBUF_ATTR_MAC_ACK);
+            log->rx.datalen = current_input->len;
+            log->rx.drift = drift_correction;
+            log->rx.drift_used = is_drift_correction_used;
+            log->rx.is_data = packetbuf_attr(PACKETBUF_ATTR_FRAME_TYPE) == FRAME802154_DATAFRAME;
+#if LLSEC802154_ENABLED
+            log->rx.sec_level = packetbuf_attr(PACKETBUF_ATTR_SECURITY_LEVEL);
+#else /* LLSEC802154_ENABLED */
+            log->rx.sec_level = 0;
+#endif /* LLSEC802154_ENABLED */
+            log->rx.estimated_drift = estimated_drift;
+          );
 
-            if(frame.fcf.ack_required) {
-              static uint8_t ack_buf[TSCH_PACKET_MAX_LEN];
-              static int ack_len;
+          if(packetbuf_attr(PACKETBUF_ATTR_MAC_ACK)) {
+            static uint8_t *ack_buf;
+            static int ack_len;
 
-              /* Build ACK frame */
-              ack_len = tsch_packet_create_eack(ack_buf, sizeof(ack_buf),
-                  &source_address, frame.seq, (int16_t)RTIMERTICKS_TO_US(estimated_drift), do_nack);
+            /* Build ACK frame */
+            ack_len = tsch_packet_create_eack(&source_address, packetbuf_attr(PACKETBUF_ATTR_MAC_SEQNO), (int16_t)RTIMERTICKS_TO_US(estimated_drift), do_nack);
+            ack_buf = packetbuf_hdrptr();
 
 #if LLSEC802154_ENABLED
-              if(tsch_is_pan_secured) {
-                /* Secure ACK frame. There is only header and header IEs, therefore data len == 0. */
-                ack_len += tsch_security_secure_frame(ack_buf, ack_buf, ack_len, 0, &current_asn);
-              }
+            if(tsch_is_pan_secured) {
+              /* Secure ACK frame. There is only header and header IEs, therefore data len == 0. */
+              ack_len += tsch_security_secure_frame(ack_buf, ack_buf, ack_len, 0, &current_asn);
+            }
 #endif /* LLSEC802154_ENABLED */
 
-              /* Copy to radio buffer */
-              NETSTACK_RADIO.prepare((const void *)ack_buf, ack_len);
+            /* Copy to radio buffer */
+            NETSTACK_RADIO.prepare((const void *)ack_buf, ack_len);
 
-              /* Wait for time to ACK and transmit ACK */
-              TSCH_SCHEDULE_AND_YIELD(pt, t, rx_start_time,
-                  packet_duration + tsch_timing[tsch_ts_tx_ack_delay] - RADIO_DELAY_BEFORE_TX, "RxBeforeAck");
-              TSCH_DEBUG_RX_EVENT();
-              NETSTACK_RADIO.transmit(ack_len);
-              tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
-            }
-
-            /* If the sender is a time source, proceed to clock drift compensation */
-            n = tsch_queue_get_nbr(&source_address);
-            if(n != NULL && n->is_time_source) {
-              int32_t since_last_timesync = ASN_DIFF(current_asn, last_sync_asn);
-              /* Keep track of last sync time */
-              last_sync_asn = current_asn;
-              /* Save estimated drift */
-              drift_correction = -estimated_drift;
-              is_drift_correction_used = 1;
-              tsch_timesync_update(n, since_last_timesync, -estimated_drift);
-              tsch_schedule_keepalive();
-            }
-
-            /* Add current input to ringbuf */
-            ringbufindex_put(&input_ringbuf);
-
-            /* Log every reception */
-            TSCH_LOG_ADD(tsch_log_rx,
-              log->rx.src = TSCH_LOG_ID_FROM_LINKADDR((linkaddr_t*)&frame.src_addr);
-              log->rx.is_unicast = frame.fcf.ack_required;
-              log->rx.datalen = current_input->len;
-              log->rx.drift = drift_correction;
-              log->rx.drift_used = is_drift_correction_used;
-              log->rx.is_data = frame.fcf.frame_type == FRAME802154_DATAFRAME;
-              log->rx.sec_level = frame.aux_hdr.security_control.security_level;
-              log->rx.estimated_drift = estimated_drift;
-            );
+            /* Wait for time to ACK and transmit ACK */
+            TSCH_SCHEDULE_AND_YIELD(pt, t, rx_start_time,
+                packet_duration + tsch_timing[tsch_ts_tx_ack_delay] - RADIO_DELAY_BEFORE_TX, "RxBeforeAck");
+            TSCH_DEBUG_RX_EVENT();
+            NETSTACK_RADIO.transmit(ack_len);
+            tsch_radio_off(TSCH_RADIO_CMD_OFF_WITHIN_TIMESLOT);
           }
+
+          /* If the sender is a time source, proceed to clock drift compensation */
+          n = tsch_queue_get_nbr(&source_address);
+          if(n != NULL && n->is_time_source) {
+            int32_t since_last_timesync = ASN_DIFF(current_asn, last_sync_asn);
+            /* Keep track of last sync time */
+            last_sync_asn = current_asn;
+            /* Save estimated drift */
+            drift_correction = -estimated_drift;
+            is_drift_correction_used = 1;
+            tsch_timesync_update(n, since_last_timesync, -estimated_drift);
+            tsch_schedule_keepalive();
+          }
+
+          /* Add current input to ringbuf */
+          ringbufindex_put(&input_ringbuf);
 
           /* Poll process for processing of pending input and logs */
           process_poll(&tsch_pending_events_process);
         }
+        disable_local_packetbuf();
       }
 
       tsch_radio_off(TSCH_RADIO_CMD_OFF_END_OF_TIMESLOT);
