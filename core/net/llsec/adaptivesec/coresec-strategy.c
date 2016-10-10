@@ -187,19 +187,19 @@ is_mic_stored(uint8_t *mic)
   return 0;
 }
 /*---------------------------------------------------------------------------*/
-static int
+static enum cmd_broker_result
 on_command(uint8_t cmd_id, uint8_t *payload)
 {
   struct akes_nbr_entry *entry;
   uint8_t *max_payload;
 
   if(cmd_id != CORESEC_STRATEGY_ANNOUNCE_IDENTIFIER) {
-    return 0;
+    return CMD_BROKER_UNCONSUMED;
   }
 
   entry = akes_nbr_get_sender_entry();
   if(!entry || !entry->permanent) {
-    return 1;
+    return CMD_BROKER_ERROR;
   }
 
   PRINTF("coresec-strategy: Received ANNOUNCE\n");
@@ -211,7 +211,7 @@ on_command(uint8_t cmd_id, uint8_t *payload)
   max_payload = ((uint8_t *)packetbuf_dataptr()) + packetbuf_datalen() - 1;
   if(payload + ADAPTIVESEC_BROADCAST_MIC_LEN - 1 > max_payload) {
     PRINTF("coresec-strategy: Out of bounds\n");
-    return 1;
+    return CMD_BROKER_ERROR;
   }
 
   /*
@@ -220,7 +220,7 @@ on_command(uint8_t cmd_id, uint8_t *payload)
    */
   if(is_mic_stored(payload)) {
     PRINTF("coresec-strategy: Already stored\n");
-    return 1;
+    return CMD_BROKER_ERROR;
   }
 
   /* store CCM*-MIC */
@@ -229,7 +229,7 @@ on_command(uint8_t cmd_id, uint8_t *payload)
     next_mic_index = 0;
   }
 
-  return 1;
+  return CMD_BROKER_CONSUMED;
 }
 /*---------------------------------------------------------------------------*/
 static int

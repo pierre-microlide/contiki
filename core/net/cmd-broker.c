@@ -56,9 +56,10 @@ cmd_broker_unsubscribe(struct cmd_broker_subscription *subscription)
   list_remove(subscriptions_list, subscription);
 }
 /*---------------------------------------------------------------------------*/
-void
+enum cmd_broker_result
 cmd_broker_publish(void)
 {
+  enum cmd_broker_result result;
   struct cmd_broker_subscription *subscription;
   uint8_t *payload;
 
@@ -66,11 +67,12 @@ cmd_broker_publish(void)
 
   subscription = list_head(subscriptions_list);
   while(subscription) {
-    if(subscription->on_command(payload[0], payload + 1)) {
-      return;
+    if(((result = subscription->on_command(payload[0], payload + 1)))) {
+      return result;
     }
     subscription = list_item_next(subscription);
   }
+  return CMD_BROKER_UNCONSUMED;
 }
 /*---------------------------------------------------------------------------*/
 void

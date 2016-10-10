@@ -42,10 +42,16 @@
 
 #include "contiki.h"
 
+enum cmd_broker_result {
+  CMD_BROKER_UNCONSUMED = 0,
+  CMD_BROKER_CONSUMED,
+  CMD_BROKER_ERROR
+};
+
 struct cmd_broker_subscription {
   struct cmd_broker_subscription *next;
   /** Returns 0 <-> not consumed */
-  int (* on_command)(uint8_t cmd_id, uint8_t *payload);
+  enum cmd_broker_result (* on_command)(uint8_t cmd_id, uint8_t *payload);
 };
 
 /**
@@ -61,7 +67,7 @@ void cmd_broker_unsubscribe(struct cmd_broker_subscription *subscription);
 /**
  * \brief Called by NETSTACK_LLSEC upon receiving a command.
  */
-void cmd_broker_publish(void);
+enum cmd_broker_result cmd_broker_publish(void);
 
 /**
  * \brief Called by NETSTACK_LLSEC.

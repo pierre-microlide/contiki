@@ -163,7 +163,7 @@ akes_get_random_waiting_period(void)
   return CLOCK_SECOND + (((AKES_MAX_WAITING_PERIOD - 1) * CLOCK_SECOND * (uint32_t)random_rand()) / RANDOM_RAND_MAX);
 }
 /*---------------------------------------------------------------------------*/
-static void
+static enum cmd_broker_result
 on_hello(uint8_t *payload)
 {
   struct akes_nbr_entry *entry;
@@ -175,7 +175,7 @@ on_hello(uint8_t *payload)
   entry = akes_nbr_get_sender_entry();
   if(entry && entry->tentative) {
     PRINTF("akes: Received HELLO from tentative neighbor\n");
-    return;
+    return CMD_BROKER_ERROR;
   }
 
   if(entry && entry->permanent) {
@@ -186,13 +186,13 @@ on_hello(uint8_t *payload)
     case ADAPTIVESEC_VERIFY_SUCCESS:
       akes_nbr_prolong(entry->permanent);
       akes_trickle_on_fresh_authentic_hello(entry->permanent);
-      return;
+      return CMD_BROKER_CONSUMED;
     case ADAPTIVESEC_VERIFY_INAUTHENTIC:
       PRINTF("akes: Starting new session with permanent neighbor\n");
       break;
     case ADAPTIVESEC_VERIFY_REPLAYED:
       PRINTF("akes: Replayed HELLO\n");
-      return;
+      return CMD_BROKER_ERROR;
     }
   }
 
@@ -200,13 +200,14 @@ on_hello(uint8_t *payload)
   entry = akes_nbr_new(AKES_NBR_TENTATIVE);
   if(!entry) {
     PRINTF("akes: HELLO flood?\n");
-    return;
+    return CMD_BROKER_ERROR;
   }
   entry->tentative->expiration_time = clock_seconds() + AKES_HELLO_DURATION;
   akes_nbr_copy_challenge(entry->tentative->challenge, payload);
   waiting_period = akes_get_random_waiting_period();
   ctimer_set(&entry->tentative->wait_timer, waiting_period, send_helloack, entry);
   PRINTF("akes: Will send HELLOACK in %lus\n", waiting_period / CLOCK_SECOND);
+  return CMD_BROKER_CONSUMED;
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -241,7 +242,7 @@ send_helloack(void *ptr)
   adaptivesec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
-static void
+static enum cmd_broker_result
 on_helloack(uint8_t *payload, int p_flag)
 {
   struct akes_nbr_entry *entry;
@@ -254,13 +255,13 @@ on_helloack(uint8_t *payload, int p_flag)
   entry = akes_nbr_get_sender_entry();
   if(entry && entry->permanent && p_flag) {
     PRINTF("akes: No need to start a new session\n");
-    return;
+    return CMD_BROKER_ERROR;
   }
 
   secret = AKES_SCHEME.get_secret_with_helloack_sender(packetbuf_addr(PACKETBUF_ADDR_SENDER));
   if(!secret) {
     PRINTF("akes: could not get secret with HELLOACK sender\n");
-    return;
+    return CMD_BROKER_ERROR;
   }
 
   /* copy challenges and generate key */
@@ -274,7 +275,7 @@ on_helloack(uint8_t *payload, int p_flag)
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
   if(adaptivesec_verify(key, AKES_UPDATE_SEC_LVL & (1 << 2))) {
     PRINTF("akes: Invalid HELLOACK\n");
-    return;
+    return CMD_BROKER_ERROR;
   }
 
   if(entry) {
@@ -287,7 +288,7 @@ on_helloack(uint8_t *payload, int p_flag)
 #endif /* AKES_NBR_WITH_PAIRWISE_KEYS */
 
         PRINTF("akes: Replayed HELLOACK\n");
-        return;
+        return CMD_BROKER_ERROR;
       } else {
         akes_nbr_delete(entry, AKES_NBR_PERMANENT);
       }
@@ -296,7 +297,7 @@ on_helloack(uint8_t *payload, int p_flag)
     if(entry->tentative) {
       if(entry->tentative->status == AKES_NBR_TENTATIVE_AWAITING_ACK) {
         PRINTF("akes: Awaiting ACK\n");
-        return;
+        return CMD_BROKER_ERROR;
       } else {
         ctimer_stop(&entry->tentative->wait_timer);
         akes_nbr_delete(entry, AKES_NBR_TENTATIVE);
@@ -306,7 +307,7 @@ on_helloack(uint8_t *payload, int p_flag)
 
   entry = akes_nbr_new(AKES_NBR_PERMANENT);
   if(!entry) {
-    return;
+    return CMD_BROKER_ERROR;
   }
 
 #if AKES_NBR_WITH_PAIRWISE_KEYS
@@ -315,7 +316,7 @@ on_helloack(uint8_t *payload, int p_flag)
   akes_nbr_new(AKES_NBR_TENTATIVE);
   if(!entry->tentative) {
     akes_nbr_delete(entry, AKES_NBR_PERMANENT);
-    return;
+    return CMD_BROKER_ERROR;
   }
   entry->tentative->expiration_time = clock_seconds() + AKES_HELLO_DURATION;
   akes_nbr_copy_key(entry->tentative->tentative_pairwise_key, key);
@@ -323,6 +324,7 @@ on_helloack(uint8_t *payload, int p_flag)
   akes_nbr_update(entry->permanent, payload + AKES_NBR_CHALLENGE_LEN);
   send_ack(entry);
   akes_trickle_on_new_nbr();
+  return CMD_BROKER_CONSUMED;
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -332,7 +334,7 @@ send_ack(struct akes_nbr_entry *entry)
   adaptivesec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
-static void
+static enum cmd_broker_result
 on_ack(uint8_t *payload)
 {
   struct akes_nbr_entry *entry;
@@ -350,7 +352,7 @@ on_ack(uint8_t *payload)
       || (entry->tentative->status != AKES_NBR_TENTATIVE_AWAITING_ACK)
       || adaptivesec_verify(entry->tentative->tentative_pairwise_key, AKES_UPDATE_SEC_LVL & (1 << 2))) {
     PRINTF("akes: Invalid ACK\n");
-    return;
+    return CMD_BROKER_ERROR;
   }
 
   if(entry->permanent) {
@@ -365,6 +367,8 @@ on_ack(uint8_t *payload)
   if(is_new) {
     akes_trickle_on_new_nbr();
   }
+
+  return CMD_BROKER_CONSUMED;
 }
 /*---------------------------------------------------------------------------*/
 void
@@ -374,7 +378,7 @@ akes_send_update(struct akes_nbr_entry *entry)
   adaptivesec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
-static void
+static enum cmd_broker_result
 on_update(uint8_t cmd_id, uint8_t *payload)
 {
   struct akes_nbr_entry *entry;
@@ -384,14 +388,14 @@ on_update(uint8_t cmd_id, uint8_t *payload)
   entry = akes_nbr_get_sender_entry();
   if(!entry || !entry->permanent) {
     PRINTF("akes: Received invalid %s\n", (cmd_id == AKES_UPDATE_IDENTIFIER) ? "UPDATE" : "UPDATEACK");
-    return;
+    return CMD_BROKER_ERROR;
   }
 #if ANTI_REPLAY_WITH_SUPPRESSION
   anti_replay_parse_counter(payload + 1);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
   if(ADAPTIVESEC_STRATEGY.verify(entry->permanent, AKES_UPDATE_SEC_LVL & (1 << 2))) {
     PRINTF("akes: Received invalid %s\n", (cmd_id == AKES_UPDATE_IDENTIFIER) ? "UPDATE" : "UPDATEACK");
-    return;
+    return CMD_BROKER_ERROR;
   }
 
   akes_nbr_update(entry->permanent, payload);
@@ -399,6 +403,8 @@ on_update(uint8_t cmd_id, uint8_t *payload)
   if(cmd_id == AKES_UPDATE_IDENTIFIER) {
     send_updateack(entry);
   }
+
+  return CMD_BROKER_CONSUMED;
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -408,7 +414,7 @@ send_updateack(struct akes_nbr_entry *entry)
   adaptivesec_send_command_frame();
 }
 /*---------------------------------------------------------------------------*/
-static int
+static enum cmd_broker_result
 on_command(uint8_t cmd_id, uint8_t *payload)
 {
 #if AKES_NBR_WITH_GROUP_KEYS && PACKETBUF_WITH_UNENCRYPTED_BYTES
@@ -426,25 +432,19 @@ on_command(uint8_t cmd_id, uint8_t *payload)
 
   switch(cmd_id) {
   case AKES_HELLO_IDENTIFIER:
-    on_hello(payload);
-    break;
+    return on_hello(payload);
   case AKES_HELLOACK_IDENTIFIER:
-    on_helloack(payload, 0);
-    break;
+    return on_helloack(payload, 0);
   case AKES_HELLOACK_P_IDENTIFIER:
-    on_helloack(payload, 1);
-    break;
+    return on_helloack(payload, 1);
   case AKES_ACK_IDENTIFIER:
-    on_ack(payload);
-    break;
+    return on_ack(payload);
   case AKES_UPDATE_IDENTIFIER:
   case AKES_UPDATEACK_IDENTIFIER:
-    on_update(cmd_id, payload);
-    break;
+    return on_update(cmd_id, payload);
   default:
-    return 0;
+    return CMD_BROKER_UNCONSUMED;
   }
-  return 1;
 }
 /*---------------------------------------------------------------------------*/
 enum akes_nbr_status
