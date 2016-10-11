@@ -153,7 +153,7 @@ struct akes_nbr_entry *akes_nbr_head(void);
 struct akes_nbr_entry *akes_nbr_next(struct akes_nbr_entry *current);
 int akes_nbr_count(enum akes_nbr_status status);
 struct akes_nbr_entry *akes_nbr_new(enum akes_nbr_status status);
-void akes_nbr_update(struct akes_nbr *nbr, uint8_t *data);
+void akes_nbr_update(struct akes_nbr *nbr, uint8_t *data, int with_group_key);
 void akes_nbr_do_prolong(struct akes_nbr *nbr, uint16_t seconds);
 void akes_nbr_prolong(struct akes_nbr *nbr);
 struct akes_nbr_entry *akes_nbr_get_sender_entry(void);

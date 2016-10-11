@@ -181,7 +181,7 @@ akes_nbr_new(enum akes_nbr_status status)
 }
 /*---------------------------------------------------------------------------*/
 void
-akes_nbr_update(struct akes_nbr *nbr, uint8_t *data)
+akes_nbr_update(struct akes_nbr *nbr, uint8_t *data, int with_group_key)
 {
   anti_replay_was_replayed(&nbr->anti_replay_info);
 #if ANTI_REPLAY_WITH_SUPPRESSION
@@ -203,7 +203,9 @@ akes_nbr_update(struct akes_nbr *nbr, uint8_t *data)
   }
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
 #if AKES_NBR_WITH_GROUP_KEYS
-  akes_nbr_copy_key(nbr->group_key, data);
+  if(with_group_key) {
+    akes_nbr_copy_key(nbr->group_key, data);
+  }
 #endif /* AKES_NBR_WITH_GROUP_KEYS */
 
 #if DEBUG

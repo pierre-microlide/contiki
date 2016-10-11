@@ -102,10 +102,6 @@ prepare_update_command(uint8_t cmd_id,
     payload += 4;
   }
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-#if AKES_NBR_WITH_GROUP_KEYS
-  akes_nbr_copy_key(payload, adaptivesec_group_key);
-  payload += AKES_NBR_KEY_LEN;
-#endif /* AKES_NBR_WITH_GROUP_KEYS */
 
   payload_len = 1                       /* command frame identifier */
       + status * AKES_NBR_CHALLENGE_LEN /* challenge */
@@ -116,12 +112,19 @@ prepare_update_command(uint8_t cmd_id,
       + 4                               /* unicast counter */
       + 4                               /* broadcast counter */
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-      + AKES_NBR_KEY_LEN;               /* broadcast key */
+      ;
 
-#if AKES_NBR_WITH_GROUP_KEYS && PACKETBUF_WITH_UNENCRYPTED_BYTES
-  packetbuf_set_attr(PACKETBUF_ATTR_UNENCRYPTED_BYTES,
-      payload_len - AKES_NBR_KEY_LEN);
-#endif /* AKES_NBR_WITH_GROUP_KEYS && PACKETBUF_WITH_UNENCRYPTED_BYTES*/
+#if AKES_NBR_WITH_GROUP_KEYS
+  switch(cmd_id) {
+  case AKES_HELLOACK_IDENTIFIER:
+  case AKES_HELLOACK_P_IDENTIFIER:
+  case AKES_ACK_IDENTIFIER:
+    akes_nbr_copy_key(payload, adaptivesec_group_key);
+    packetbuf_set_attr(PACKETBUF_ATTR_UNENCRYPTED_BYTES, payload_len);
+    payload_len += AKES_NBR_KEY_LEN;
+    break;
+  }
+#endif /* AKES_NBR_WITH_GROUP_KEYS */
   packetbuf_set_datalen(payload_len);
 }
 /*---------------------------------------------------------------------------*/
@@ -273,7 +276,7 @@ on_helloack(uint8_t *payload, int p_flag)
   packetbuf_set_attr(PACKETBUF_ATTR_NEIGHBOR_INDEX, payload[AKES_NBR_CHALLENGE_LEN]);
   anti_replay_parse_counter(payload + AKES_NBR_CHALLENGE_LEN + 1);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-  if(adaptivesec_verify(key, AKES_UPDATE_SEC_LVL & (1 << 2))) {
+  if(adaptivesec_verify(key, AKES_NBR_WITH_GROUP_KEYS)) {
     PRINTF("akes: Invalid HELLOACK\n");
     return CMD_BROKER_ERROR;
   }
@@ -321,7 +324,9 @@ on_helloack(uint8_t *payload, int p_flag)
   entry->tentative->expiration_time = clock_seconds() + AKES_HELLO_DURATION;
   akes_nbr_copy_key(entry->tentative->tentative_pairwise_key, key);
 #endif /* AKES_NBR_WITH_PAIRWISE_KEYS */
-  akes_nbr_update(entry->permanent, payload + AKES_NBR_CHALLENGE_LEN);
+  akes_nbr_update(entry->permanent,
+      payload + AKES_NBR_CHALLENGE_LEN,
+      AKES_NBR_WITH_GROUP_KEYS);
   send_ack(entry);
   akes_trickle_on_new_nbr();
   return CMD_BROKER_CONSUMED;
@@ -350,7 +355,7 @@ on_ack(uint8_t *payload)
   if(!entry
       || !entry->tentative
       || (entry->tentative->status != AKES_NBR_TENTATIVE_AWAITING_ACK)
-      || adaptivesec_verify(entry->tentative->tentative_pairwise_key, AKES_UPDATE_SEC_LVL & (1 << 2))) {
+      || adaptivesec_verify(entry->tentative->tentative_pairwise_key, AKES_NBR_WITH_GROUP_KEYS)) {
     PRINTF("akes: Invalid ACK\n");
     return CMD_BROKER_ERROR;
   }
@@ -363,7 +368,7 @@ on_ack(uint8_t *payload)
   }
   entry->permanent = entry->tentative;
   entry->tentative = NULL;
-  akes_nbr_update(entry->permanent, payload);
+  akes_nbr_update(entry->permanent, payload, AKES_NBR_WITH_GROUP_KEYS);
   if(is_new) {
     akes_trickle_on_new_nbr();
   }
@@ -393,12 +398,12 @@ on_update(uint8_t cmd_id, uint8_t *payload)
 #if ANTI_REPLAY_WITH_SUPPRESSION
   anti_replay_parse_counter(payload + 1);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-  if(ADAPTIVESEC_STRATEGY.verify(entry->permanent, AKES_UPDATE_SEC_LVL & (1 << 2))) {
+  if(ADAPTIVESEC_STRATEGY.verify(entry->permanent, 0)) {
     PRINTF("akes: Received invalid %s\n", (cmd_id == AKES_UPDATE_IDENTIFIER) ? "UPDATE" : "UPDATEACK");
     return CMD_BROKER_ERROR;
   }
 
-  akes_nbr_update(entry->permanent, payload);
+  akes_nbr_update(entry->permanent, payload, 0);
 
   if(cmd_id == AKES_UPDATE_IDENTIFIER) {
     send_updateack(entry);
@@ -422,8 +427,6 @@ on_command(uint8_t cmd_id, uint8_t *payload)
   case AKES_HELLOACK_IDENTIFIER:
   case AKES_HELLOACK_P_IDENTIFIER:
   case AKES_ACK_IDENTIFIER:
-  case AKES_UPDATE_IDENTIFIER:
-  case AKES_UPDATEACK_IDENTIFIER:
     packetbuf_set_attr(PACKETBUF_ATTR_UNENCRYPTED_BYTES,
         packetbuf_datalen() - AKES_NBR_KEY_LEN - ADAPTIVESEC_UNICAST_MIC_LEN);
     break;

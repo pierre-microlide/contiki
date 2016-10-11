@@ -88,9 +88,10 @@ adaptivesec_get_sec_lvl(void)
     case AKES_HELLOACK_IDENTIFIER:
     case AKES_HELLOACK_P_IDENTIFIER:
     case AKES_ACK_IDENTIFIER:
+      return AKES_ACKS_SEC_LVL;
     case AKES_UPDATE_IDENTIFIER:
     case AKES_UPDATEACK_IDENTIFIER:
-      return AKES_UPDATE_SEC_LVL;
+      return AKES_UPDATES_SEC_LVL;
     }
     break;
   case FRAME802154_DATAFRAME:
