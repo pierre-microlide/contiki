@@ -94,7 +94,6 @@ PROCESS_THREAD(delete_process, ev, data)
           PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_send_timer));
           if(akes_nbr_is_expired(next->permanent)) {
             PRINTF("akes-delete: Sending UPDATE\n");
-            packetbuf_set_attr(PACKETBUF_ATTR_MAX_MAC_TRANSMISSIONS, 1);
             akes_send_update(next);
             etimer_set(&update_send_timer, UPDATEACK_WAITING_PERIOD * CLOCK_SECOND);
             PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_send_timer));
