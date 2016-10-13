@@ -276,7 +276,7 @@ verify_broadcast(struct akes_nbr *sender)
 }
 /*---------------------------------------------------------------------------*/
 static enum adaptivesec_verify
-verify(struct akes_nbr *sender, int shall_decrypt)
+verify(struct akes_nbr *sender)
 {
   if(packetbuf_holds_broadcast()) {
     if(verify_broadcast(sender)) {
@@ -287,7 +287,7 @@ verify(struct akes_nbr *sender, int shall_decrypt)
 #if ANTI_REPLAY_WITH_SUPPRESSION
     packetbuf_set_attr(PACKETBUF_ATTR_NEIGHBOR_INDEX, sender->foreign_index);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-    if(adaptivesec_verify(sender->pairwise_key, shall_decrypt)) {
+    if(adaptivesec_verify(sender->pairwise_key)) {
       PRINTF("coresec-strategy: Inauthentic unicast\n");
       return ADAPTIVESEC_VERIFY_INAUTHENTIC;
     }

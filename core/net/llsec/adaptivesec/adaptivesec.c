@@ -234,10 +234,12 @@ adaptivesec_aead(uint8_t *key, int shall_encrypt, uint8_t *result, int forward)
 }
 /*---------------------------------------------------------------------------*/
 int
-adaptivesec_verify(uint8_t *key, int shall_decrypt)
+adaptivesec_verify(uint8_t *key)
 {
+  int shall_decrypt;
   uint8_t generated_mic[MAX(ADAPTIVESEC_UNICAST_MIC_LEN, ADAPTIVESEC_BROADCAST_MIC_LEN)];
 
+  shall_decrypt = adaptivesec_get_sec_lvl() & (1 << 2);
   packetbuf_set_datalen(packetbuf_datalen() - adaptivesec_mic_len());
   adaptivesec_aead(key, shall_decrypt, generated_mic, 0);
 
@@ -250,7 +252,6 @@ static void
 input(void)
 {
   struct akes_nbr_entry *entry;
-  int shall_decrypt;
 
   if(linkaddr_cmp(packetbuf_addr(PACKETBUF_ADDR_SENDER), &linkaddr_node_addr)) {
     PRINTF("adaptivesec: frame from ourselves\n");
@@ -272,10 +273,7 @@ input(void)
     anti_replay_restore_counter(&entry->permanent->anti_replay_info);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
 
-    shall_decrypt = packetbuf_holds_broadcast()
-        ? (ADAPTIVESEC_BROADCAST_SEC_LVL & (1 << 2))
-        : (ADAPTIVESEC_UNICAST_SEC_LVL & (1 << 2));
-    if(ADAPTIVESEC_STRATEGY.verify(entry->permanent, shall_decrypt)) {
+    if(ADAPTIVESEC_STRATEGY.verify(entry->permanent) != ADAPTIVESEC_VERIFY_SUCCESS) {
       return;
     }
 

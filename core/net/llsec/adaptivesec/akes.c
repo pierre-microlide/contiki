@@ -185,7 +185,7 @@ on_hello(uint8_t *payload)
 #if ANTI_REPLAY_WITH_SUPPRESSION
     anti_replay_restore_counter(&entry->permanent->anti_replay_info);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-    switch(ADAPTIVESEC_STRATEGY.verify(entry->permanent, 0)) {
+    switch(ADAPTIVESEC_STRATEGY.verify(entry->permanent)) {
     case ADAPTIVESEC_VERIFY_SUCCESS:
       akes_nbr_prolong(entry->permanent);
       akes_trickle_on_fresh_authentic_hello(entry->permanent);
@@ -276,7 +276,7 @@ on_helloack(uint8_t *payload, int p_flag)
   packetbuf_set_attr(PACKETBUF_ATTR_NEIGHBOR_INDEX, payload[AKES_NBR_CHALLENGE_LEN]);
   anti_replay_parse_counter(payload + AKES_NBR_CHALLENGE_LEN + 1);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-  if(adaptivesec_verify(key, AKES_NBR_WITH_GROUP_KEYS)) {
+  if(adaptivesec_verify(key)) {
     PRINTF("akes: Invalid HELLOACK\n");
     return CMD_BROKER_ERROR;
   }
@@ -355,7 +355,7 @@ on_ack(uint8_t *payload)
   if(!entry
       || !entry->tentative
       || (entry->tentative->status != AKES_NBR_TENTATIVE_AWAITING_ACK)
-      || adaptivesec_verify(entry->tentative->tentative_pairwise_key, AKES_NBR_WITH_GROUP_KEYS)) {
+      || adaptivesec_verify(entry->tentative->tentative_pairwise_key)) {
     PRINTF("akes: Invalid ACK\n");
     return CMD_BROKER_ERROR;
   }
@@ -398,7 +398,8 @@ on_update(uint8_t cmd_id, uint8_t *payload)
 #if ANTI_REPLAY_WITH_SUPPRESSION
   anti_replay_parse_counter(payload + 1);
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-  if(ADAPTIVESEC_STRATEGY.verify(entry->permanent, 0)) {
+  if(ADAPTIVESEC_STRATEGY.verify(entry->permanent)
+      != ADAPTIVESEC_VERIFY_SUCCESS) {
     PRINTF("akes: Received invalid %s\n", (cmd_id == AKES_UPDATE_IDENTIFIER) ? "UPDATE" : "UPDATEACK");
     return CMD_BROKER_ERROR;
   }

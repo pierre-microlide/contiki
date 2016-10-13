@@ -101,7 +101,7 @@ struct adaptivesec_strategy {
   int (* on_frame_created)(void);
 
   /** 0 <-> Success */
-  enum adaptivesec_verify (* verify)(struct akes_nbr *sender, int shall_decrypt);
+  enum adaptivesec_verify (* verify)(struct akes_nbr *sender);
 
   uint8_t (* get_overhead)(void);
 
@@ -124,6 +124,6 @@ uint8_t *adaptivesec_prepare_command(uint8_t cmd_id, const linkaddr_t *dest);
 void adaptivesec_send_command_frame(void);
 uint8_t adaptivesec_mic_len(void);
 void adaptivesec_aead(uint8_t *key, int shall_encrypt, uint8_t *result, int forward);
-int adaptivesec_verify(uint8_t *key, int shall_decrypt);
+int adaptivesec_verify(uint8_t *key);
 
 #endif /* ADAPTIVESEC_H_ */

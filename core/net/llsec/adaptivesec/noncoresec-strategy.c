@@ -92,14 +92,14 @@ on_frame_created(void)
 }
 /*---------------------------------------------------------------------------*/
 static enum adaptivesec_verify
-verify(struct akes_nbr *sender, int shall_decrypt)
+verify(struct akes_nbr *sender)
 {
 #if ANTI_REPLAY_WITH_SUPPRESSION
   if(!packetbuf_holds_broadcast()) {
     packetbuf_set_attr(PACKETBUF_ATTR_NEIGHBOR_INDEX, sender->foreign_index);
   }
 #endif /* ANTI_REPLAY_WITH_SUPPRESSION */
-  if(adaptivesec_verify(sender->group_key, shall_decrypt)) {
+  if(adaptivesec_verify(sender->group_key)) {
     PRINTF("noncoresec-strategy: Inauthentic frame\n");
     return ADAPTIVESEC_VERIFY_INAUTHENTIC;
   }
