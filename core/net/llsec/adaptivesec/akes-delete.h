@@ -40,6 +40,7 @@
 #ifndef AKES_DELETE_H_
 #define AKES_DELETE_H_
 
+void akes_delete_on_update_sent(void *ptr, int status, int transmissions);
 void akes_delete_init(void);
 
 #endif /* AKES_DELETE_H_ */

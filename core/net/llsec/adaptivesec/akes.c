@@ -380,8 +380,7 @@ void
 akes_send_update(struct akes_nbr_entry *entry)
 {
   prepare_update_command(AKES_UPDATE_IDENTIFIER, entry, AKES_NBR_PERMANENT);
-  packetbuf_set_attr(PACKETBUF_ATTR_MAX_MAC_TRANSMISSIONS, 1);
-  adaptivesec_send_command_frame();
+  NETSTACK_MAC.send(akes_delete_on_update_sent, NULL);
 }
 /*---------------------------------------------------------------------------*/
 static enum cmd_broker_result

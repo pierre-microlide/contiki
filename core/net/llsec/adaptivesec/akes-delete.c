@@ -75,7 +75,6 @@ PROCESS_THREAD(delete_process, ev, data)
   static struct etimer update_check_timer;
   static struct etimer update_send_timer;
   static struct akes_nbr_entry *next;
-  static uint8_t retransmissions;
 
   PROCESS_BEGIN();
 
@@ -87,28 +86,44 @@ PROCESS_THREAD(delete_process, ev, data)
     PRINTF("akes-delete: #permanent = %d\n", akes_nbr_count(AKES_NBR_PERMANENT));
     next = akes_nbr_head();
     while(next) {
-      if(next->permanent) {
-        retransmissions = MAX_RETRANSMISSIONS;
-        while(akes_nbr_is_expired(next->permanent) && retransmissions--) {
-          etimer_set(&update_send_timer, akes_get_random_waiting_period());
-          PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_send_timer));
-          if(akes_nbr_is_expired(next->permanent)) {
-            PRINTF("akes-delete: Sending UPDATE\n");
-            akes_send_update(next);
-            etimer_set(&update_send_timer, UPDATEACK_WAITING_PERIOD * CLOCK_SECOND);
-            PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_send_timer));
-            if(akes_nbr_is_expired(next->permanent) && !retransmissions) {
-              akes_nbr_delete(next, AKES_NBR_PERMANENT);
-            }
-          }
-        }
+      if(!next->permanent || !akes_nbr_is_expired(next->permanent)) {
+        next = akes_nbr_next(next);
+        continue;
       }
-      next = akes_nbr_next(next);
+
+      /* wait for a random period of time to avoid collisions */
+      etimer_set(&update_send_timer, akes_get_random_waiting_period());
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_send_timer));
+
+      /* check if something happened in the meantime */
+      if(!akes_nbr_is_expired(next->permanent)) {
+        next = akes_nbr_next(next);
+        continue;
+      }
+
+      /* send UPDATE */
+      akes_send_update(next);
+      PROCESS_YIELD_UNTIL(ev == PROCESS_EVENT_POLL);
+      PRINTF("akes-delete: Sent UPDATE\n");
+      etimer_set(&update_send_timer, UPDATEACK_WAITING_PERIOD * CLOCK_SECOND);
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_send_timer));
+      if(akes_nbr_is_expired(next->permanent)) {
+        akes_nbr_delete(next, AKES_NBR_PERMANENT);
+        next = akes_nbr_head();
+      } else {
+        next = akes_nbr_next(next);
+      }
     }
     etimer_restart(&update_check_timer);
   }
 
   PROCESS_END();
+}
+/*---------------------------------------------------------------------------*/
+void
+akes_delete_on_update_sent(void *ptr, int status, int transmissions)
+{
+  process_poll(&delete_process);
 }
 /*---------------------------------------------------------------------------*/
 void
