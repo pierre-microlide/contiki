@@ -48,3 +48,7 @@ else
 	                               sort -g | head -1))
 	$(PYTHON) $(BSL) $(BSL_FLAGS) $(BSL_ADDRESS_ARG) $<
 endif
+
+SERIALDUMP = $(CONTIKI)/tools/sky/serialdump-linux 
+login:
+	$(SERIALDUMP) -b115200 $(PORT)
