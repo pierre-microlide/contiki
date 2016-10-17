@@ -475,6 +475,11 @@ parse(void)
       PRINTF("framer-802154: no destination address\n");
       return FRAMER_FAILED;
     }
+    if(!linkaddr_cmp(packetbuf_addr(PACKETBUF_ADDR_RECEIVER), &linkaddr_node_addr)
+        && !packetbuf_holds_broadcast()) {
+      PRINTF("framer-802154: not for us\n");
+      return FRAMER_FAILED;
+    }
     p += addr_len;
   } else {
     dst_pid = FRAME802154_BROADCASTPANDID;
@@ -494,6 +499,10 @@ parse(void)
     addr_len = parse_addr(p, src_addr_mode, PACKETBUF_ADDR_SENDER);
     if(!addr_len) {
       PRINTF("framer-802154: no source address\n");
+      return FRAMER_FAILED;
+    }
+    if(linkaddr_cmp(packetbuf_addr(PACKETBUF_ADDR_SENDER), &linkaddr_node_addr)) {
+      PRINTF("framer-802154: frame from ourselves\n");
       return FRAMER_FAILED;
     }
     p += addr_len;
