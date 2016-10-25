@@ -42,6 +42,7 @@
 
 #include "net/mac/rdc.h"
 #include "net/llsec/adaptivesec/potr.h"
+#include "sys/rtimer.h"
 
 #ifdef SECRDC_CONF_ENABLED
 #define SECRDC_ENABLED SECRDC_CONF_ENABLED
@@ -70,6 +71,7 @@
 #endif /* SECRDC_WITH_SECURE_PHASE_LOCK */
 
 #define SECRDC_WITH_PHASE_LOCK (SECRDC_WITH_SECURE_PHASE_LOCK || SECRDC_WITH_ORIGINAL_PHASE_LOCK)
+#define SECRDC_UPDATE_THRESHOLD (RTIMER_ARCH_SECOND * 60 * 5) /* 5min */
 
 #if SECRDC_WITH_PHASE_LOCK
 struct secrdc_phase {

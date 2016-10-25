@@ -306,7 +306,17 @@ akes_nbr_delete(struct akes_nbr_entry *entry, enum akes_nbr_status status)
 int
 akes_nbr_is_expired(struct akes_nbr *nbr)
 {
-  return nbr->expiration_time < clock_seconds();
+  if(nbr->expiration_time < clock_seconds()) {
+    return 1;
+  }
+#if SECRDC_WITH_SECURE_PHASE_LOCK
+  if(!nbr->phase.t) {
+    return 0;
+  }
+  return rtimer_delta(nbr->phase.t, RTIMER_NOW()) >= SECRDC_UPDATE_THRESHOLD;
+#else /* SECRDC_WITH_SECURE_PHASE_LOCK */
+  return 0;
+#endif /* SECRDC_WITH_SECURE_PHASE_LOCK */
 }
 /*---------------------------------------------------------------------------*/
 void

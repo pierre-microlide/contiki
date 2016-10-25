@@ -39,7 +39,6 @@
 
 #include "net/llsec/adaptivesec/akes-delete.h"
 #include "net/llsec/adaptivesec/akes.h"
-#include "net/mac/contikimac/secrdc.h"
 #include "net/packetbuf.h"
 
 #ifdef AKES_DELETE_CONF_UPDATE_CHECK_INTERVAL
@@ -68,22 +67,8 @@
 #define PRINTF(...)
 #endif /* DEBUG */
 
-#if SECRDC_WITH_SECURE_PHASE_LOCK
-extern int secrdc_shall_send_update(struct akes_nbr *nbr);
-#endif /* SECRDC_WITH_SECURE_PHASE_LOCK */
-
 PROCESS(delete_process, "delete_process");
 
-/*---------------------------------------------------------------------------*/
-static int
-is_expired(struct akes_nbr *nbr)
-{
-  return akes_nbr_is_expired(nbr)
-#if SECRDC_ENABLED && SECRDC_WITH_SECURE_PHASE_LOCK
-      || secrdc_shall_send_update(nbr)
-#endif /* SECRDC_ENABLED && SECRDC_WITH_SECURE_PHASE_LOCK */
-      ;
-}
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(delete_process, ev, data)
 {
@@ -101,7 +86,7 @@ PROCESS_THREAD(delete_process, ev, data)
     PRINTF("akes-delete: #permanent = %d\n", akes_nbr_count(AKES_NBR_PERMANENT));
     next = akes_nbr_head();
     while(next) {
-      if(!next->permanent || !is_expired(next->permanent)) {
+      if(!next->permanent || !akes_nbr_is_expired(next->permanent)) {
         next = akes_nbr_next(next);
         continue;
       }
@@ -111,7 +96,7 @@ PROCESS_THREAD(delete_process, ev, data)
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_send_timer));
 
       /* check if something happened in the meantime */
-      if(!is_expired(next->permanent)) {
+      if(!akes_nbr_is_expired(next->permanent)) {
         next = akes_nbr_next(next);
         continue;
       }
@@ -122,7 +107,7 @@ PROCESS_THREAD(delete_process, ev, data)
       PRINTF("akes-delete: Sent UPDATE\n");
       etimer_set(&update_send_timer, UPDATEACK_WAITING_PERIOD * CLOCK_SECOND);
       PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&update_send_timer));
-      if(is_expired(next->permanent)) {
+      if(akes_nbr_is_expired(next->permanent)) {
         akes_nbr_delete(next, AKES_NBR_PERMANENT);
         next = akes_nbr_head();
       } else {

@@ -96,7 +96,6 @@
     - CCA_DURATION)
 #define PHASE_LOCK_FREQ_TOLERANCE (1)
 #define LPM_SWITCHING ((LPM_CONF_MAX_PM > 0) ? 5 /* ticks */ : 0)
-#define UPDATE_THRESHOLD (RTIMER_ARCH_SECOND * 60 * 5)
 #define ACKNOWLEDGEMENT_WINDOW_MIN (US_TO_RTIMERTICKS(336))
 #define ACKNOWLEDGEMENT_WINDOW_MAX (US_TO_RTIMERTICKS(427))
 #define ACKNOWLEDGEMENT_WINDOW (ACKNOWLEDGEMENT_WINDOW_MAX \
@@ -239,17 +238,6 @@ LIST(buffered_frames_list);
 static volatile rtimer_clock_t sfd_timestamp;
 #endif /* SECRDC_WITH_SECURE_PHASE_LOCK */
 
-/*---------------------------------------------------------------------------*/
-#if SECRDC_WITH_SECURE_PHASE_LOCK
-int
-secrdc_shall_send_update(struct akes_nbr *nbr)
-{
-  if(!nbr->phase.t) {
-    return 0;
-  }
-  return rtimer_delta(nbr->phase.t, RTIMER_NOW()) >= UPDATE_THRESHOLD;
-}
-#endif /* SECRDC_WITH_SECURE_PHASE_LOCK */
 /*---------------------------------------------------------------------------*/
 static int
 has_timed_out(rtimer_clock_t timeout)
