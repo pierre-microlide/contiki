@@ -130,6 +130,7 @@
 struct buffered_frame {
   struct buffered_frame *next;
   struct queuebuf *qb;
+  int allocated_qb;
   mac_callback_t sent;
   int transmissions;
   void *ptr;
@@ -986,7 +987,9 @@ on_strobed(void)
   }
 #endif /* DEBUG */
   queuebuf_to_packetbuf(u.strobe.bf->qb);
-  queuebuf_free(u.strobe.bf->qb);
+  if(u.strobe.bf->allocated_qb) {
+    queuebuf_free(u.strobe.bf->qb);
+  }
   mac_call_sent_callback(u.strobe.bf->sent,
       u.strobe.bf->ptr,
       u.strobe.result,
@@ -1033,8 +1036,10 @@ queue_frame(mac_callback_t sent,
       mac_call_sent_callback(sent, ptr, MAC_TX_ERR, 0);
       return;
     }
+    bf->allocated_qb = 1;
   } else {
     bf->qb = qb;
+    bf->allocated_qb = 0;
   }
 
   bf->ptr = ptr;
